@@ -1,0 +1,326 @@
+#Library Imports
+import cv2
+from skimage import io, color, filters, feature
+from skimage.util import random_noise
+from sklearn.neighbors import KernelDensity
+import matplotlib.pyplot as plt
+import numpy as np
+from PIL import Image
+import math
+from scipy import ndimage as nd
+from scipy import fftpack as ft
+from matplotlib import colors as cl
+
+#----------------------------------------------------------------
+
+#Import Image and flatten
+img = Image.open('Images\MRI_heart_4CB.jpg')
+imgArr = np.array(img)
+rImg = imgArr.reshape(-1, 1)
+
+imgSec = imgArr[100:200, :].reshape(-1, 1)
+cropped = img.crop((0,30,256,80))
+
+#Create empty lines for estimates
+est08 = np.linspace(0, 255, 255)[:, np.newaxis]
+est18 = np.linspace(0, 255, 255)[:, np.newaxis]
+
+#create Kernel Density Estimation instance with 0.8 and 1.8 bandwidth
+model08 = KernelDensity(bandwidth=0.8, kernel='gaussian')
+model18 = KernelDensity(bandwidth=1.8, kernel='gaussian')
+
+#Apply kernal Denity _____________ to flattened image
+model08.fit(imgSec)
+model18.fit(imgSec)
+
+#fill empty lines with kernel estimate
+log_dens08 = model08.score_samples(est08)
+log_dens18 = model18.score_samples(est18)
+
+#plot diagram
+plt.hist(rImg, bins = range(0,256)), plt.title('Image Histogram')
+plt.plot(est08, np.exp(log_dens08), c='red', label = 'KDE Bandwidth = 0.8')
+plt.plot(est18, np.exp(log_dens18), c='black', label = 'KDE Bandwidth = 1.8')
+plt.legend()
+plt.show()
+#----------------------------------------------------------------
+#Q2
+
+#Import image and convert to grayscale
+img2 = cv2.imread('Images\MRI_heart_4CB.jpg')
+grayImg = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+
+#apply 3x3 average filter
+bImg = cv2.blur(grayImg, (3, 3))
+mImg = nd.median_filter(cropped, 3)
+mImgFull = nd.median_filter(grayImg, 3)
+
+#plot diagram
+plt.imshow(grayImg, cmap = 'inferno'), plt.title('Original Image'), plt.colorbar()
+plt.subplot(312), plt.imshow(bImg, cmap = 'inferno'), plt.title('3X3 Average Filter'), plt.colorbar()
+plt.subplot(313), plt.imshow(mImg, cmap = 'inferno'), plt.title('3X3 median Filter'), plt.colorbar()
+plt.show()
+
+plt.imshow(mImgFull, cmap = 'inferno'), plt.title('3X3 median Filter'), plt.colorbar()
+plt.show()
+
+plt.imshow(bImg, cmap = 'inferno'), plt.title('3X3 Average Filter'), plt.colorbar()
+plt.show()
+
+
+#----------------------------------------------------------------
+
+#Apply Salt and Pepper, and Gaussian White Noise
+imgSP = random_noise(img2, mode ='s&p', amount = 0.01)
+imgG = random_noise(grayImg, mode ='gaussian', mean = 0, var = 0.0075)
+
+#Apply Gaussian Filter with filter size of 3, 7, and 15
+imgG_3avg = cv2.GaussianBlur(imgG, (3, 3), 0)
+imgG_7avg = cv2.GaussianBlur(imgG, (7, 7), 0)
+imgG_15avg = cv2.GaussianBlur(imgG, (15, 15), 0)
+imgSP_3avg = cv2.GaussianBlur(imgSP, (3, 3), 0)
+imgSP_7avg = cv2.GaussianBlur(imgSP, (7, 7), 0)
+imgSP_15avg = cv2.GaussianBlur(imgSP, (15, 15), 0)
+
+#Apply Median Filter with filter size of 3, 7, and 15
+imgG_3med = nd.median_filter(imgG, 3)
+imgG_7med = nd.median_filter(imgG, 7)
+imgG_15med = nd.median_filter(imgG, 9)
+imgSP_3med = nd.median_filter(imgSP, 3)
+imgSP_7med = nd.median_filter(imgSP, 7)
+imgSP_15med = nd.median_filter(imgSP, 9)
+
+#Calculate MSE
+def MSE(im1, im2):
+
+    max1 = np.max(im1)
+    im1 = im1 / max1
+    max2 = np.max(im2)
+    im2 = im2 / max2
+
+    diff = (im1 - im2)**2
+    sum = np.sum(diff)
+    MSE = sum/(im1.shape[0] * im1.shape[1])
+    return MSE
+
+#calculate MSE for all images compared to original
+mseGAvg = np.zeros((3))
+mseGMed = np.zeros((3))
+mseSPAvg = np.zeros((3))
+mseSPMed = np.zeros((3))
+
+mseGAvg[0] = MSE(imgG, imgG_3avg)
+mseGAvg[1] = MSE(imgG, imgG_7avg)
+mseGAvg[2] = MSE(imgG, imgG_15avg)
+
+mseGMed[0] = MSE(imgG, imgG_3med)
+mseGMed[1] = MSE(imgG, imgG_7med)
+mseGMed[2] = MSE(imgG, imgG_15med)
+
+
+mseSPAvg[0] = MSE(imgSP, imgSP_3avg)
+mseSPAvg[1]= MSE(imgSP, imgSP_7avg)
+mseSPAvg[2] = MSE(imgSP, imgSP_15avg)
+
+mseSPMed[0] = MSE(imgSP, imgSP_3med)
+mseSPMed[1] = MSE(imgSP, imgSP_7med)
+mseSPMed[2] = MSE(imgSP, imgSP_15med)
+
+# set width of bar
+barWidth = 0.25
+ 
+# Set position of bar on X axis
+p1 = np.arange(len(mseSPMed))
+p2 = [x + barWidth for x in r1]
+p3 = [x + barWidth for x in r2]
+p4 = [x + barWidth for x in r3]
+ 
+# Make the plot
+plt.bar(p1, mseGAvg, color='blue', width=barWidth, edgecolor='white', label='Average filter on GW noise')
+plt.bar(p2, mseGMed, color='purple', width=barWidth, edgecolor='white', label='Average filter on S&P White noise')
+plt.bar(p3, mseSPAvg, color='orange', width=barWidth, edgecolor='white', label='Median filter on GW noise')
+plt.bar(p4, mseSPMed, color='red', width=barWidth, edgecolor='white', label='Median filter on S&P White noise')
+
+# Add xticks on the middle of the group bars
+plt.xlabel('Filter Size')
+plt.ylabel('MSE')
+plt.xticks([r + 1.5*barWidth for r in range(3)], ['3x3', '7x7', '15x15'])
+ 
+# Create legend & Show graphic
+plt.title('MSE of Average and Median Filter of differing size on Gaussian White and Salt & Pepper Noise')
+plt.legend()
+plt.show()
+
+#Plot diagram
+plt.subplot(331), plt.imshow(img, cmap = "gray"), plt.title('Original'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(332), plt.imshow(imgSP, cmap = "gray"), plt.title('Salt and Pepper'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(333), plt.imshow(imgG, cmap = "gray"), plt.title('Gaussian'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(334), plt.imshow(imgG_3avg, cmap = "gray"), plt.title('3x3 Average Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(335), plt.imshow(imgG_7avg, cmap = "gray"), plt.title('7x7 Average Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(336), plt.imshow(imgG_15avg, cmap = "gray"), plt.title('15x15 Average Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(337), plt.imshow(imgSP_3med, cmap = "gray"), plt.title('3x3 Median Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(338), plt.imshow(imgSP_7med, cmap = "gray"), plt.title('7x7 Median Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(339), plt.imshow(imgSP_15med, cmap = "gray"), plt.title('15x15 Median Filter'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
+
+#----------------------------------------------------------------
+
+range_inc = lambda start, end: range(start, end+1)
+
+#define function to calculate values for Laplacian transform of Gaussian filter
+#alpha value controls gaussian distribution
+def l_o_g(x, y, alpha):
+	nom = (y**2)+(x**2)-2*(alpha**2)
+	denom = 2*math.pi*(alpha**6)
+	expo = math.exp(-((x**2)+(y**2))/(2*(alpha**2)))
+	return nom*expo/denom
+
+#create laplacian of gaussian function
+def create_log(alpha, size = 3):
+    mask = math.ceil(float(size)*float(alpha))
+    print(mask)
+
+    logMask = []
+
+    range = int(math.floor(mask/2))
+    print("Going from " + str(-range) + " to " + str(range))
+    for i in range_inc(-range, range):
+        for j in range_inc(-range, range):
+            logMask.append(l_o_g(i,j,alpha))
+    logMask = np.array(logMask)
+    logMask = logMask.reshape(mask,mask)
+    return logMask
+
+#Convolve LoG with Image in spatial domain
+imgL1 = nd.convolve(grayImg, create_log(0.3))
+imgL2 = nd.convolve(grayImg, create_log(0.45))
+imgL3 = nd.convolve(grayImg, create_log(0.6))
+
+#plot diagram
+plt.subplot(221), plt.imshow(img, cmap = "gray"), plt.title('Original'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(222), plt.imshow(imgL1, cmap = "gray"), plt.title('LoG Filter Aplha = 0.3'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(223), plt.imshow(imgL2, cmap = "gray"), plt.title('LoG Filter Aplha = 0.45'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(224), plt.imshow(imgL3, cmap = "gray"), plt.title('LoG Filter Aplha = 0.6'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
+
+#----------------------------------------------------------------
+
+#calculate histogram
+hist,bins = np.histogram(img2.flatten(),256,[0,256])
+#calculate cumulative density function
+cdf = hist.cumsum()
+
+#normalize the cumulative distribution function
+cdfNorm = cdf * 1/ cdf.max()
+
+
+temp = np.ma.masked_equal(cdf,0)
+#following equation y' = y.(max - min) + min
+temp = (temp - temp.min())*255/(temp.max()-temp.min())
+cdf = np.ma.filled(temp,0).astype('uint8')
+
+imgHE = cdf[img2]
+
+plt.plot(cdfNorm, color = 'blue'), plt.title('Cumulative Distribution Function')
+plt.hist(img2.flatten(),256,[0,256], color = 'red', density = True)
+plt.yscale('log')
+plt.ylabel('Probability Density')
+plt.xlabel('Intensity Value')
+plt.show()
+
+plt.hist(img2.flatten(),256,[0,256], color = 'red', density = True, label = 'Original')
+plt.hist(imgHE.flatten(),256,[0,256], color = 'blue', density = True, label = 'Histogram Equalization')
+plt.xlim([0,256])
+plt.ylabel('Probability Density')
+plt.xlabel('Intensity Value')
+plt.title('Normalized Histogram of Original and Equalized Image')
+plt.show()
+
+plt.subplot(121), plt.imshow(img2, cmap = "gray"), plt.title('Original'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(122), plt.imshow(imgHE, cmap = "gray"), plt.title('Histogram Equalization'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+
+plt.show()
+
+#----------------------------------------------------------------
+
+#Create mask for high-pass and low-pass filter, by drawing a circle at the center of the image
+#create blank mask and calculate center
+maskHP = np.zeros(grayImg.shape, dtype = bool)
+maskLP = np.zeros(grayImg.shape, dtype = bool)
+centre = np.array(maskHP.shape)/2.0
+
+#equation for drawing circle
+for y in range(maskHP.shape[1]):
+    for x in range(maskHP.shape[0]):
+        maskHP[y,x] = (y - centre[0])**2 + (x - centre[1])**2 > 10 **2
+for y in range(maskLP.shape[1]):
+    for x in range(maskLP.shape[0]):
+        maskLP[y,x] = (y - centre[0])**2 + (x - centre[1])**2 < 20 **2
+
+#Apply cetered fourier transform
+fftImg = np.zeros((256,256), dtype = complex)
+fftImg = np.fft.fftshift(np.fft.fft2(grayImg))
+
+#create high-pass and low-pass filter
+filtFFT = np.zeros_like(maskHP, dtype = complex)
+filtHP = fftImg * maskHP
+filtLP = fftImg * maskLP
+
+#apply mask to cetered-FFT
+filtIFFT = abs(np.fft.ifft2(np.fft.ifftshift(fftImg)))
+ifftHP = abs(np.fft.ifft2(np.fft.ifftshift(filtHP)))
+ifftLP = abs(np.fft.ifft2(np.fft.ifftshift(filtLP)))
+
+#plot diagrams
+plt.subplot(321), plt.imshow(grayImg, cmap = "gray",vmin = 0, vmax = 256), plt.title('Original Image'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(322), plt.imshow(20*np.log10(abs(fftImg)), cmap = "gray", vmin = 0, vmax = 256), plt.title('Frequency Domain'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(323), plt.imshow(maskHP, cmap = "gray",vmin = 0, vmax = 1), plt.title('High Pass Mask'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(324), plt.imshow(maskLP, cmap = "gray",vmin = 0, vmax = 1), plt.title('Low Pass Mask'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(325), plt.imshow(20*np.log10(abs(filtHP)), cmap = "gray", vmin = 0, vmax = 256), plt.title('High Pass Filtered'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(326), plt.imshow(20*np.log10(abs(filtLP)), cmap = "gray", vmin = 0, vmax = 256), plt.title('Low Pass Filtered'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
+
+plt.subplot(221), plt.imshow(grayImg, cmap = "gray",vmin = 0, vmax = 256), plt.title('Original Image'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(222), plt.imshow(filtIFFT, cmap = "gray",vmin = 0, vmax = 256), plt.title('Unfiltered Image'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(223), plt.imshow(ifftHP, cmap = "gray"), plt.title('High Pass Image'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(224), plt.imshow(ifftLP, cmap = "gray",vmin = 0, vmax = 256), plt.title('Low Pass Image'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
+
+#----------------------------------------------------------------
+
+#create gradient image from grayscale image
+retval, threshImg = cv2.threshold(grayImg, 75, 255, cv2.THRESH_BINARY)
+grad = np.gradient(threshImg)
+
+#combine fradient of x and y axes
+grads = grad[0] + grad[1]
+normGrad = grads/ np.max(grads)
+
+#apply filters to images without noise
+sobelED = filters.sobel(threshImg)
+prewittED = filters.prewitt(threshImg)
+cannyED = feature.canny(threshImg, sigma = 3)
+threshImg = threshImg / np.max(threshImg)
+LoG_ED = nd.gaussian_laplace(threshImg, sigma = 3)
+
+#apply filters to images with noise
+sobelGED = filters.sobel(imgG)
+prewittGED = filters.prewitt(imgG)
+cannyGED = feature.canny(imgG, sigma = 3)
+LoG_GED = nd.gaussian_laplace(imgG, sigma = 3)
+
+#plot diagrams
+plt.subplot(311), plt.imshow(img2, cmap = "gray"), plt.title('Original'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(312), plt.imshow(imgG, cmap = "gray"), plt.title('Gaussian White Noise'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(313), plt.imshow(normGrad, cmap = "gray"), plt.title('Binary Thresholding'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
+
+plt.subplot(421), plt.imshow(sobelED, cmap = "gray"), plt.title('Sobel (No Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(422), plt.imshow(sobelGED, cmap = "gray"), plt.title('Sobel (With Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(423), plt.imshow(prewittED, cmap = "gray"), plt.title('Prewitt (No Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(424), plt.imshow(prewittGED, cmap = "gray"), plt.title('Prewitt (With Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(425), plt.imshow(cannyED, cmap = "gray"), plt.title('Canny (No Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(426), plt.imshow(cannyGED, cmap = "gray"), plt.title('Canny (With Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(427), plt.imshow(LoG_ED, cmap = "gray"), plt.title('LoG (With Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.subplot(428), plt.imshow(LoG_GED, cmap = "gray"), plt.title('LoG (With Noise)'), plt.colorbar(), plt.xticks([]), plt.yticks([])
+plt.show()
