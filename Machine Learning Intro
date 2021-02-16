@@ -1,0 +1,78 @@
+#Imports
+from sklearn.model_selection import train_test_split as tts
+from sklearn.neighbors import KNeighborsClassifier as knn
+from sklearn.metrics import classification_report as cr
+from sklearn.metrics import confusion_matrix as cm
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier as dtc
+from sklearn import tree as tr
+import matplotlib.pyplot as plt
+import graphviz
+import pandas as pd
+import numpy as np
+import os
+
+#Read iris data from excel file and split into x and y (data and classification)
+irisData = pd.read_excel('assets/iris.xlsx')
+irisVar = irisData['variety']
+irisData.drop('variety', axis=1, inplace= True)
+
+heartData = pd.read_excel('assets/heart.xlsx')
+heartTar = heartData['target']
+heartData.drop('target', axis=1, inplace= True)
+
+
+scaleObjIr = StandardScaler()
+normIrisData = scaleObjIr.fit_transform(irisData)
+
+#Split data into training and test dataset (80% train, 20% test)
+ir_xtrain, ir_xtest, ir_ytrain, ir_ytest = tts(normIrisData, irisVar, test_size=0.2)
+he_xtrain, he_xtest, he_ytrain, he_ytest = tts(heartData, heartTar, test_size=0.2)
+
+"""
+Standardize data feature-wise following equation:
+z = (x-u/s)
+
+where:
+z = standardized value
+x = original value of feature
+u = mean of feature set
+s = standard deviation of feature set
+"""
+#Create KNN classifier using
+knn3 = knn(n_neighbors = 3)
+knn5 = knn(n_neighbors = 9)
+knn3.fit(ir_xtrain, ir_ytrain)
+knn5.fit(ir_xtrain, ir_ytrain)
+preds3 = knn3.predict(ir_xtest)
+preds5 = knn5.predict(ir_xtest)
+
+#output the confusion matrix and classification metrics for comparison of different K-values
+print('KNN with K-value = 3')
+print(cm(ir_ytest, preds3))
+print(cr(ir_ytest, preds3))
+print('--------------------------')
+print('KNN with K-value = 5')
+print(cm(ir_ytest, preds5))
+print(cr(ir_ytest, preds5))
+
+#Define the Decision Tree classifiers parameters (one used Ginin Index one uses Entropy)
+dtcGin = dtc(criterion = "gini", max_depth = 3)
+dtcEnt = dtc(criterion = "entropy", max_depth = 3)
+
+#train the DTC's
+dtcGin.fit(he_xtrain, he_ytrain)
+dtcEnt.fit(he_xtrain, he_ytrain)
+
+#Output pderictions 
+predGin = dtcGin.predict(he_xtest)
+predEnt = dtcEnt.predict(he_xtest)
+       
+ 
+ginImg = tr.export_graphviz(dtcGin, out_file= None, feature_names = ['Gender', 'Chest Pain', 'Fasting Blood Sugar', 'Resting Electrocardiograph', 'Exercise Induced Angina'], class_names = ['Heart Disease', 'No Heart Disease'], filled = True)
+entImg = tr.export_graphviz(dtcEnt, out_file= None, feature_names = ['Gender', 'Chest Pain', 'Fasting Blood Sugar', 'Resting Electrocardiograph', 'Exercise Induced Angina'], class_names = ['Heart Disease', 'No Heart Disease'], filled = True)                                                                                          
+
+trGin = graphviz.Source(ginImg, format ="png")
+trEnt = graphviz.Source(entImg, format ="png")
+trGin.render('GiniDTCRender', view = True)
+trEnt.render('EntropyDTCRender', view = True)
